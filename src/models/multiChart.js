@@ -6,7 +6,6 @@ nv.models.multiChart = function() {
     //------------------------------------------------------------
 
     var margin = {top: 30, right: 20, bottom: 50, left: 60},
-        marginTop = null,
         color = nv.utils.defaultColor(),
         width = null,
         height = null,
@@ -56,6 +55,8 @@ nv.models.multiChart = function() {
 
     function chart(selection) {
         selection.each(function(data) {
+            // d3.layout.stack().offset('zero');
+            // console.info('d3.layout.stack().offset(): ', d3.layout.stack().offset());
             var container = d3.select(this),
                 that = this;
             nv.utils.initSVG(container);
@@ -99,7 +100,40 @@ nv.models.multiChart = function() {
 
             x   .domain(d3.extent(d3.merge(series1.concat(series2)), function(d) { return d.x }))
                 .range([0, availableWidth]);
+/* gav start */
+            if (hasEnabledSeries(dataBars1) || hasEnabledSeries(dataBars2)) {
+                // At least 1 bar series is showing, in which case we have to convert the x-axis scale
+                // to use ordinal instead of linear in order to align the labels with the middle of bars.
+                // See https://stackoverflow.com/questions/24797605/nvd3-js-multichart-x-axis-labels-is-aligned-to-multiple-lines-but-not-multiple
+                var xs = d3.scale.ordinal();
 
+                // Set the domain, just need an array of values so that size equals to how many range bands we want.
+                if (series1.length > 0) {
+                    xs.domain(series1[0].map(function(d) { return d.x }));
+                } else {
+                    xs.domain(series2[0].map(function(d) { return d.x }));
+                }
+
+                // Use the groupSpacing from the multiBars with data so that this scale will line up with their bars.
+                var padding = bars1.groupSpacing();
+                if (hasEnabledSeries(dataBars2)) {
+                    padding = bars2.groupSpacing();
+                }
+
+                // For some really strange reason, the outerPadding must be 10% larger than padding.
+                // Otherwise the xAxis do not line up with the stacks and lines. It probably has something
+                // to do with the way stacks and lines calculate padding when lines1.scatter.padData is true.
+                // (Stacks and lines calculate the outerPadding on a linear scale, using the value set in
+                // lines1.scatter.padDataOuter, may be there some mismatch somewhere...)
+                // Note bars1 and bars2 also apply a 10% increase to match the increase here, just look
+                // for "groupSpacing * 1.1" in multiBar.js.
+                xs.rangeBands([0, availableWidth], padding, padding * 1.1);
+                xAxis.scale(xs);
+            } else {
+                // No bar series showing so go back to the linear scale for xAxis.
+                xAxis.scale(x);
+            }
+/* gav end */
             var wrap = container.selectAll('g.wrap.multiChart').data([data]);
             var gEnter = wrap.enter().append('g').attr('class', 'wrap nvd3 multiChart').append('g');
 
@@ -127,11 +161,16 @@ nv.models.multiChart = function() {
             if (!showLegend) {
                 g.select('.legendWrap').selectAll('*').remove();
             } else {
-                var legendWidth = legend.align() ? availableWidth / 2 : availableWidth;
-                var legendXPosition = legend.align() ? legendWidth : 0;
+                // Commented out old way of computing legend position. New way is similar to lineChart.js.
+                //var legendWidth = legend.align() ? availableWidth / 2 : availableWidth;
+                //var legendXPosition = legend.align() ? legendWidth : 0;
 
-                legend.width(legendWidth);
+                legend.width(availableWidth);
                 legend.color(color_array);
+
+                if (showLegend === "bottom") {
+                    legend.alignPos("centre");
+                }
 
                 g.select('.legendWrap')
                     .datum(data.map(function(series) {
@@ -141,13 +180,30 @@ nv.models.multiChart = function() {
                     }))
                     .call(legend);
 
-                if (!marginTop && legend.height() !== margin.top) {
+                // Adjust top/bottom margin to match legend height in case legend spans multiple lines.
+                if (showLegend === "bottom") {
+                    // Original margin is saved and added to legend height.
+                    if (typeof margin.original_bottom === "undefined") {
+                        margin.original_bottom = margin.bottom;
+                    }
+                    margin.bottom = legend.height() + margin.original_bottom;
+                } else if (showLegend !== "bottom" && margin.top != legend.height()) {
                     margin.top = legend.height();
-                    availableHeight = nv.utils.availableHeight(height, container, margin);
                 }
-
+                availableHeight = nv.utils.availableHeight(height, container, margin);
+                //availableHeight = (height || parseInt(container.style('height')) || 400) // In case top/bottom margin has changed.
+                //    - margin.top - margin.bottom;
+                // Again, old way of computing availableHeight commented out above. Also, legX is always 0 in the new way.
+                var legX = 0, legY;
+                if (showLegend === "bottom") {
+                    // New feature, legend to appear at bottom.
+                    legY = availableHeight + (margin.bottom - legend.height());
+                } else {
+                    // Original feature, legend appears at top.
+                    legY = -margin.top;
+                }
                 g.select('.legendWrap')
-                    .attr('transform', 'translate(' + legendXPosition + ',' + (-margin.top) +')');
+                    .attr('transform', 'translate(' + legX + ',' + legY +')');
             }
 
             lines1
@@ -208,39 +264,38 @@ nv.models.multiChart = function() {
 
             var extraValue1BarStacked = [];
             if (bars1.stacked() && dataBars1.length) {
-                var extraValue1BarStacked = dataBars1.filter(function(d){return !d.disabled}).map(function(a){return a.values});
-
-                if (extraValue1BarStacked.length > 0)
-                    extraValue1BarStacked = extraValue1BarStacked.reduce(function(a,b){
-                        return a.map(function(aVal,i){return {x: aVal.x, y: aVal.y + b[i].y}})
-                    });
+                // Construct a new series that sums the data points of all stacked bars assigned to yAxis1.
+                // This way yScale1 correctly encompasses the tallest stacked bar appearing on yAxis1.
+                var srcarray = dataBars1.filter(function(d){return !d.disabled}).map(function(a){return a.values});
+                extraValue1BarStacked = extraValue1BarStacked.concat(createSummedStackedSeriesData(srcarray));
             }
-            if (dataBars1.length) {
+            if (dataStack1.length) { // No need to stack1.stacked() because it is always stacked.
+                // Do the same for stacked area like we did for stacked bars above.
+                var srcarray = dataStack1.filter(function(d){return !d.disabled}).map(function(a){return a.values});
+                extraValue1BarStacked = extraValue1BarStacked.concat(createSummedStackedSeriesData(srcarray));
+            }
+            if (dataBars1.length || dataStack1.length) {
+                // Existence of bar or stackedArea automatically requires y-axis to show 0 value.
                 extraValue1BarStacked.push({x:0, y:0});
             }
 
             var extraValue2BarStacked = [];
             if (bars2.stacked() && dataBars2.length) {
-                var extraValue2BarStacked = dataBars2.filter(function(d){return !d.disabled}).map(function(a){return a.values});
-
-                if (extraValue2BarStacked.length > 0)
-                    extraValue2BarStacked = extraValue2BarStacked.reduce(function(a,b){
-                        return a.map(function(aVal,i){return {x: aVal.x, y: aVal.y + b[i].y}})
-                    });
+                // Construct a new series that sums the data points of all stacked bars assigned to yAxis2.
+                // This way yScale2 correctly encompasses the tallest stacked bar appearing on yAxis2.
+                var srcarray = dataBars2.filter(function(d){return !d.disabled}).map(function(a){return a.values});
+                extraValue2BarStacked = extraValue2BarStacked.concat(createSummedStackedSeriesData(srcarray));
+            }
+            if (dataStack2.length) { // No need to stack2.stacked() because it is always stacked.
+                // Do the same for stacked area like we did for stacked bars above.
+                var srcarray = dataStack2.filter(function(d){return !d.disabled}).map(function(a){return a.values});
+                extraValue2BarStacked = extraValue2BarStacked.concat(createSummedStackedSeriesData(srcarray));
+            }
+            if (dataBars2.length || dataStack2.length) {
+                // Existence of bar or stackedArea automatically requires y-axis to show 0 value.
+                extraValue2BarStacked.push({x:0, y:0});
             }
 
-            if (dataBars2.length) {
-              extraValue2BarStacked.push({x:0, y:0});
-            }
-
-            function getStackedAreaYs(series) {
-                return d3.transpose(series).map(function(x) {
-                    return x.map(function(g) {
-                        return g.y;
-                        });
-                    }).map(function(x) {return d3.sum(x);})
-            }
-            
             yScale1 .domain(yDomain1 || d3.extent(d3.merge(series1).concat(extraValue1BarStacked), function(d) { return d.y } ))
                 .range([0, availableHeight]);
 
@@ -249,39 +304,65 @@ nv.models.multiChart = function() {
 
             lines1.yDomain(yScale1.domain());
             scatters1.yDomain(yScale1.domain());
-            if(bars1.stacked()) {
-                var yStackScale1 = yScale1.domain([0, d3.max(getStackedAreaYs(series1))]).range([0, availableHeight]);
-                bars1.yDomain(yStackScale1.domain())
-            } else {
-                bars1.yDomain(yScale1.domain());
-            }
+            bars1.yDomain(yScale1.domain());
             stack1.yDomain(yScale1.domain());
 
             lines2.yDomain(yScale2.domain());
             scatters2.yDomain(yScale2.domain());
-            if(bars2.stacked()) {
-                var yStackScale2 = yScale2.domain([0, d3.max(getStackedAreaYs(series2))]).range([0, availableHeight]);
-                bars2.yDomain(yStackScale2.domain())
-            } else {
-                bars2.yDomain(yScale2.domain());
-            }
+            bars2.yDomain(yScale2.domain());
             stack2.yDomain(yScale2.domain());
 
-            if(dataStack1.length){d3.transition(stack1Wrap).call(stack1);}
-            if(dataStack2.length){d3.transition(stack2Wrap).call(stack2);}
+            // True to add outer padding to offset lines and x-axis to line up data points with bars.
+            // When setting this variable, we're assuming all bars will be on bars1 or bars2, but not both.
+            var rbcOffset = false;
 
-            if(dataBars1.length){d3.transition(bars1Wrap).call(bars1);}
-            if(dataBars2.length){d3.transition(bars2Wrap).call(bars2);}
+            if (dataBars1.length) {
+                d3.transition(bars1Wrap).call(bars1);
+                // Leave rbcOffset as is if all series in dataBars are disabled. No need to pad if bars are not showing.
+                if (hasEnabledSeries(dataBars1)) {
+                    rbcOffset = true;
+                }
+            }
+            if (dataBars2.length) {
+                d3.transition(bars2Wrap).call(bars2);
+                // Leave rbcOffset as is if all series in dataBars are disabled. No need to pad if bars are not showing.
+                if (hasEnabledSeries(dataBars2)) {
+                    rbcOffset = true;
+                }
+            }
 
-            if(dataLines1.length){d3.transition(lines1Wrap).call(lines1);}
-            if(dataLines2.length){d3.transition(lines2Wrap).call(lines2);}
+            if (dataStack1.length) {
+                stack1.scatter.padData(rbcOffset);
+                d3.transition(stack1Wrap).call(stack1);
+            }
+            if (dataStack2.length) {
+                stack2.scatter.padData(rbcOffset);
+                d3.transition(stack2Wrap).call(stack2);
+            }
 
-            if(dataScatters1.length){d3.transition(scatters1Wrap).call(scatters1);}
-            if(dataScatters2.length){d3.transition(scatters2Wrap).call(scatters2);}
+            if (dataLines1.length) {
+                lines1.scatter.padData(rbcOffset);
+                d3.transition(lines1Wrap).call(lines1);
+            }
+            if (dataLines2.length) {
+                lines2.scatter.padData(rbcOffset);
+                d3.transition(lines2Wrap).call(lines2);
+            }
+
+            if(dataScatters1.length){
+                scatters1.padData(rbcOffset);
+                d3.transition(scatters1Wrap).call(scatters1);
+            }
+
+            if(dataScatters2.length){
+                scatters2.padData(rbcOffset);
+                d3.transition(scatters2Wrap).call(scatters2);
+            }
 
             xAxis
-                ._ticks( nv.utils.calcTicksX(availableWidth/100, data) )
+                // ._ticks( nv.utils.calcTicksX(availableWidth/100, data))
                 .tickSize(-availableHeight, 0);
+                console.info('xAxis: ', xAxis);
 
             g.select('.nv-x.nv-axis')
                 .attr('transform', 'translate(0,' + availableHeight + ')');
@@ -323,6 +404,32 @@ nv.models.multiChart = function() {
                     .svgContainer(container)
                     .xScale(x);
                 wrap.select(".nv-interactive").call(interactiveLayer);
+            }
+
+            //============================================================
+            // Support functions
+            //------------------------------------------------------------
+
+            function createSummedStackedSeriesData(srcarray) {
+                // srcarray - an array of {x:a,y:b} values.
+                // Clone srcarray so we do not end up modifying the source.
+                var newarray = JSON.parse(JSON.stringify(srcarray));
+
+                if (newarray.length > 0) {
+                    newarray = newarray.reduce(function (a, b) {
+                        return a.map(function (aVal, i) {
+                            return { "x": aVal.x, "y": (aVal.y + b[i].y) };
+                        });
+                    });
+                }
+
+                return newarray;
+            }
+
+            function hasEnabledSeries(dataBars) {
+                if (dataBars && dataBars.length) {
+                    return dataBars.some(function (series) { return !series.disabled; })
+                }
             }
 
             //============================================================
@@ -371,8 +478,27 @@ nv.models.multiChart = function() {
 
             function mouseover_stack(evt) {
                 var yaxis = evt.series.yAxis === 2 ? yAxis2 : yAxis1;
-                evt.point['x'] = stack1.x()(evt.point);
-                evt.point['y'] = stack1.y()(evt.point);
+
+                // Note thanks to function updateInteractiveLayer() in scatter.js
+                // (look for "var mouseEventCallback"), evt.point['x'] and evt.point['y'] are already defined.
+                // The data required by tooltip is according to tooltip.js (look for "_.value = _.point.x;").
+                var ttd = {};
+                ttd.point = {};
+                ttd.point.x = evt.point['x'];
+                //ttd.point.y = evt.point['y'];   // see below
+                ttd.point.color = evt.point.color;
+                ttd.series = {};
+                ttd.series.color = evt.series.color;
+                ttd.series.key = evt.series.key;
+                //ttd.series.value = ttd.point.y; // see below
+
+                // For stacked area charts, there are 2 values (y and y0).
+                // y is the absolute value (read off the y-axis, which includes other values stacked below it)
+                // y0 is the y value of just this particular series (excludes other stacks)
+                // We want the y0 value to be displayed in tooltip. evt.point.y is y not y0.
+                ttd.point.y = evt.point.display.y;
+                ttd.series.value = ttd.point.y;
+
                 tooltip
                     .duration(0)
                     .headerFormatter(function(d, i) {
@@ -381,7 +507,7 @@ nv.models.multiChart = function() {
                     .valueFormatter(function(d, i) {
                         return yaxis.tickFormat()(d, i);
                     })
-                    .data(evt)
+                    .data(ttd)
                     .hidden(false);
             }
 
@@ -417,60 +543,13 @@ nv.models.multiChart = function() {
               }
             }
 
-            function highlightPoint(series, pointIndex, b, pointYValue) {
-
-              var chartMap = {
-                'line': {
-                  'yAxis1': {
-                    chart: lines1,
-                    data: dataLines1
-                  },
-                  'yAxis2': {
-                    chart: lines2,
-                    data: dataLines2
-                  }
-                },
-                'scatter': {
-                  'yAxis1': {
-                    chart: scatters1,
-                    data: dataScatters1
-                  },
-                  'yAxis2': {
-                    chart: scatters2,
-                    data: dataScatters2
-                  }
-                },
-                'bar': {
-                  'yAxis1': {
-                    chart: bars1,
-                    data: dataBars1
-                  },
-                  'yAxis2': {
-                    chart: bars2,
-                    data: dataBars2
-                  }
-                },
-                'area': {
-                  'yAxis1': {
-                    chart: stack1,
-                    data: dataStack1
-                  },
-                  'yAxis2': {
-                    chart: stack2,
-                    data: dataStack2
-                  }
-                }
-              };
-
-              var relevantChart = chartMap[series.type]['yAxis' + series.yAxis].chart;
-              var relevantDatasets = chartMap[series.type]['yAxis' + series.yAxis].data;
-              var seriesIndex = relevantDatasets.reduce(function (seriesIndex, dataSet, i) {
-                return dataSet.key === series.key ? i : seriesIndex;
-              }, 0);
-
-              try {
-                relevantChart.highlightPoint(seriesIndex, pointIndex, b, pointYValue);
-              } catch(e){}
+            function highlightPoint(serieIndex, pointIndex, b){
+              for(var i=0, il=charts.length; i < il; i++){
+                var chart = charts[i];
+                try {
+                  chart.highlightPoint(serieIndex, pointIndex, b);
+                } catch(e){}
+              }
             }
 
             if(useInteractiveGuideline){
@@ -491,8 +570,8 @@ nv.models.multiChart = function() {
                         pointIndex = nv.interactiveBisect(currentValues, e.pointXValue, chart.x());
                         var point = currentValues[pointIndex];
                         var pointYValue = chart.y()(point, pointIndex);
-                        if (pointYValue !== null && !isNaN(pointYValue) && !series.noHighlightSeries) {
-                          highlightPoint(series, pointIndex, true);
+                        if (pointYValue !== null) {
+                            highlightPoint(i, pointIndex, true);
                         }
                         if (point === undefined) return;
                         if (singlePoint === undefined) singlePoint = point;
@@ -510,7 +589,9 @@ nv.models.multiChart = function() {
                         var yAxis = allData[i].yAxis;
                         return d == null ? "N/A" : yAxis.tickFormat()(d);
                     };
+
                     interactiveLayer.tooltip
+                        .chartContainer(chart.container.parentNode)
                         .headerFormatter(function(d, i) {
                             return xAxis.tickFormat()(d, i);
                         })
@@ -603,7 +684,6 @@ nv.models.multiChart = function() {
         width:      {get: function(){return width;}, set: function(_){width=_;}},
         height:     {get: function(){return height;}, set: function(_){height=_;}},
         showLegend: {get: function(){return showLegend;}, set: function(_){showLegend=_;}},
-        xScale: {get: function(){return x;}, set: function(_){ x = _; xAxis.scale(x); }},
         yDomain1:      {get: function(){return yDomain1;}, set: function(_){yDomain1=_;}},
         yDomain2:    {get: function(){return yDomain2;}, set: function(_){yDomain2=_;}},
         noData:    {get: function(){return noData;}, set: function(_){noData=_;}},
@@ -612,10 +692,7 @@ nv.models.multiChart = function() {
 
         // options that require extra logic in the setter
         margin: {get: function(){return margin;}, set: function(_){
-            if (_.top !== undefined) {
-                margin.top = _.top;
-                marginTop = _.top;
-            }
+            margin.top    = _.top    !== undefined ? _.top    : margin.top;
             margin.right  = _.right  !== undefined ? _.right  : margin.right;
             margin.bottom = _.bottom !== undefined ? _.bottom : margin.bottom;
             margin.left   = _.left   !== undefined ? _.left   : margin.left;
@@ -668,6 +745,26 @@ nv.models.multiChart = function() {
                 scatters2.interactive(false);
             }
         }},
+        barsGroupSpacing: {
+            get: function() {
+                return bars1.groupSpacing();
+            }, set: function(_) {
+                // groupSpacing shifts and shrinks the bars.
+                bars1.groupSpacing(_);
+                bars2.groupSpacing(_);
+
+                // In order for the data points of lines, area and scatter to line up with the
+                // middle of the bars, we also need to adjust their padding by the same amount.
+                // Note padding only takes effect when lines1.scatter.padData is true, so when
+                // there are no bar data series the padDataOuters have no effect.
+                lines1.scatter.padDataOuter(_);
+                lines2.scatter.padDataOuter(_);
+                stack1.scatter.padDataOuter(_);
+                stack2.scatter.padDataOuter(_);
+                scatters1.padDataOuter(_);
+                scatters2.padDataOuter(_);
+            }
+        },
 
         duration: {get: function(){return duration;}, set: function(_) {
             duration = _;

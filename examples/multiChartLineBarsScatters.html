@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <link href="../build/nv.d3.css" rel="stylesheet" type="text/css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.17/d3.min.js" charset="utf-8"></script>
+    <script src="../build/nv.d3.js"></script>
+
+    <style>
+        text {
+            font: 12px sans-serif;
+        }
+        svg {
+            display: block;
+        }
+        html, body, #chart1, svg {
+            margin: 0px;
+            padding: 0px;
+            height: 100%;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class='with-3d-shadow with-transitions' onresize="resizeChart()">
+
+<div id="chart1">
+    <svg> </svg>
+</div>
+
+<script>
+    function resizeChart(){
+        const x = document.getElementsByTagName("svg")[0];
+        x.style.height = window.innerHeight - 60 + 'px';
+        x.style.width = window.innerWidth - 20 + 'px';
+    }
+    // var testdata = stream_layers(9,10+Math.random()*100,.1).map(function(data, i) {
+    //     return {
+    //         key: 'Stream' + i,
+    //         values: data.map(function(a){a.y = a.y * (i <= 1 ? -1 : 1); return a})
+    //     };
+    // });
+
+    // testdata[0].type = "area";
+    // testdata[0].yAxis = 1;
+    // testdata[1].type = "area";
+    // testdata[1].yAxis = 1;
+    // testdata[2].type = "line";
+    // testdata[2].yAxis = 1;
+    // testdata[3].type = "line";
+    // testdata[3].yAxis = 2;
+    // testdata[4].type = "scatter";
+    // testdata[4].yAxis = 1;
+    // testdata[5].type = "scatter";
+    // testdata[5].yAxis = 2;
+    // testdata[6].type = "bar";
+    // testdata[6].yAxis = 2;
+    // testdata[7].type = "bar";
+    // testdata[7].yAxis = 2;
+    // testdata[8].type = "bar";
+    // testdata[8].yAxis = 2;
+
+        var testdata = [{
+        "key": "P/L 20 days in CHF",
+        "type": "bar",
+        "yAxis": 1,
+        "color": "#404040",
+        "values": [{
+            "x": 1483221600000,
+            "y": -2576.1071903584525
+        }, {
+            "x": 1483308000000,
+            "y": -6731.8908300311305
+        }, {
+            "x": 1483394400000,
+            "y": -15852.478226944339
+        }, {
+            "x": 1483480800000,
+            "y": -26049.3768323604
+        }, {
+            "x": 1483567200000,
+            "y": 13108.970830610022
+        }, {
+            "x": 1483653600000,
+            "y": 13962.476897138637
+        }, {
+            "x": 1483740000000,
+            "y": 8297.461242027115
+        }, {
+            "x": 1483826400000,
+            "y": 8297.461242027115
+        }, {
+            "x": 1483912800000,
+            "y": 5449.7960883486085
+        }, {
+            "x": 1483999200000,
+            "y": -11552.380128500517
+        }, {
+            "x": 1484085600000,
+            "y": -31171.061458612327
+        }, {
+            "x": 1484172000000,
+            "y": -19439.705099861603
+        }]
+    }, {
+        "key": "Lower Hist.Sim. VaR (20 days 95.4%) in CHF",
+        "type": "line",
+        "yAxis": 1,
+        "color": "#ff0000",
+        "values": [{
+            "x": 1483221600000,
+            "y": 26586.957121842144
+        }, {
+            "x": 1483308000000,
+            "y": 25071.767154065903
+        }, {
+            "x": 1483394400000,
+            "y": 24899.995164864347
+        }, {
+            "x": 1483480800000,
+            "y": 24457.062233182733
+        }, {
+            "x": 1483567200000,
+            "y": 17974.766763454525
+        }, {
+            "x": 1483653600000,
+            "y": 13775.311536393267
+        }, {
+            "x": 1483740000000,
+            "y": 13582.961809405846
+        }, {
+            "x": 1483826400000,
+            "y": 13435.444446110136
+        }, {
+            "x": 1483912800000,
+            "y": 15897.9605848464
+        }, {
+            "x": 1483999200000,
+            "y": 17017.95166000993
+        }, {
+            "x": 1484085600000,
+            "y": 17141.2410657551
+        }, {
+            "x": 1484172000000,
+            "y": 17983.145984777482
+        }]
+    }, {
+        "key": "Upper Hist.Sim. VaR (20 days 95.4%) in CHF",
+        "type": "scatter",
+        "yAxis": 1,
+        "color": "blue",
+        "values": [{
+            "x": 1483221600000,
+            "y": 26586.957121842144
+        }, {
+            "x": 1483308000000,
+            "y": 25071.767154065903
+        }, {
+            "x": 1483394400000,
+            "y": 24899.995164864347
+        }, {
+            "x": 1483480800000,
+            "y": 24457.062233182733
+        }, {
+            "x": 1483567200000,
+            "y": 17974.766763454525
+        }, {
+            "x": 1483740000000,
+            "y": 13582.961809405846
+        }, {
+            "x": 1483826400000,
+            "y": 13435.444446110136
+        }, {
+            "x": 1483912800000,
+            "y": 15897.9605848464
+        }, {
+            "x": 1483999200000,
+            "y": 17017.95166000993
+        }, {
+            "x": 1484085600000,
+            "y": 17141.2410657551
+        }, {
+            "x": 1484172000000,
+            "y": 17983.145984777482
+        }]
+    }, {
+        "key": "Upper Hist.Sim. VaR (20 days 95.4%) in CHF",
+        "type": "line",
+        "yAxis": 1,
+        "color": "#00ff00",
+        "values": [{
+            "x": 1483221600000,
+            "y": -26586.957121842144
+        }, {
+            "x": 1483308000000,
+            "y": -25071.767154065903
+        }, {
+            "x": 1483394400000,
+            "y": -24899.995164864347
+        }, {
+            "x": 1483480800000,
+            "y": -24457.062233182733
+        }, {
+            "x": 1483567200000,
+            "y": -17974.766763454525
+        }, {
+            "x": 1483653600000,
+            "y": -13775.311536393267
+        }, {
+            "x": 1483740000000,
+            "y": -13582.961809405846
+        }, {
+            "x": 1483826400000,
+            "y": -13435.444446110136
+        }, {
+            "x": 1483912800000,
+            "y": -15897.9605848464
+        }, {
+            "x": 1483999200000,
+            "y": -17017.95166000993
+        }, {
+            "x": 1484085600000,
+            "y": -17141.2410657551
+        }, {
+            "x": 1484172000000,
+            "y": -17983.145984777482
+        }]
+    }, {
+        "key": "11 exceedances lower Hist.Sim. VaR 20 days in CHF",
+        "type": "scatter",
+        "yAxis": 1,
+        "color": "darkgreen",
+        "values": [{
+            "x": 1483221600000,
+            "y": -26586.957121842144
+        }, {
+            "x": 1483308000000,
+            "y": -25071.767154065903
+        }, {
+            "x": 1483394400000,
+            "y": -24899.995164864347
+        }, {
+            "x": 1483567200000,
+            "y": -17974.766763454525
+        }, {
+            "x": 1483653600000,
+            "y": -13775.311536393267
+        }, {
+            "x": 1483740000000,
+            "y": -13582.961809405846
+        }, {
+            "x": 1483826400000,
+            "y": -13435.444446110136
+        }, {
+            "x": 1483912800000,
+            "y": -15897.9605848464
+        }, {
+            "x": 1483999200000,
+            "y": -17017.95166000993
+        }]
+    }];
+
+    // console.log('testdata: ', testdata);
+
+    nv.addGraph(function() {
+        var chart = nv.models.multiChart()
+            .margin({top: 30, right: 60, bottom: 50, left: 70})
+            .color(d3.scale.category10().range());
+
+        chart.xAxis.tickFormat(d3.format(',f'));
+        chart.yAxis1.tickFormat(d3.format(',.1f'));
+        chart.yAxis2.tickFormat(d3.format(',.1f'));
+        // chart.showMinMax();
+
+        d3.select('#chart1 svg')
+            .datum(testdata)
+            .transition().duration(500).call(chart);
+
+        nv.utils.windowResize(() => {
+            chart.update()
+        });
+
+        return chart;
+    });
+
+</script>
+</body>
+</html>

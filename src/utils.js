@@ -445,6 +445,7 @@ nv.utils.calcTicksX = function(numTicks, data) {
     // make sure it's an integer
     numTicks = Math.floor(numTicks);
     nv.log("Calculating tick count as: ", numTicks);
+    console.info('numTicks: ', numTicks);
     return numTicks;
 };
 
